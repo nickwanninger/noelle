@@ -40,3 +40,4 @@ patchInstallDir "noelle-parallelization-planner" ;
 patchInstallDir "noelle-parallelizer-loop" ;
 patchInstallDir "noelle-parallelizer-autotuner" ;
 patchInstallDir "noelle-time-saved" ;
+patchInstallDir "noelle-tailcallelim" ;

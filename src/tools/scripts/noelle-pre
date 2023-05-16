@@ -47,6 +47,17 @@ if test "$enableDead" == "1" ; then
   eval $cmdToExecute ;
 fi
 
+
+# Normalize the code
+cmdToExecute="noelle-simplification $notOptions -o $notOptions"
+echo $cmdToExecute ;
+eval $cmdToExecute ;
+
+# Attempt some tail call elim
+cmdToExecute="noelle-tailcallelim $notOptions"
+echo $cmdToExecute ;
+eval $cmdToExecute ;
+
 # Normalize the code
 cmdToExecute="noelle-simplification $notOptions -o $notOptions"
 echo $cmdToExecute ;
