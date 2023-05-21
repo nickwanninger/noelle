@@ -1013,11 +1013,16 @@ struct CAT : public FunctionPass {
     // candidate for TRE. Would like to be proven wrong, but I don't think it
     // has any effect as -O3 slaps `tail` on all call instructions regardless of
     // if they are really tail callable.
+    std::set<CallInst *>
+        fakeTailCallMarks; // Which calls have we marked as tail call?
     for (auto &BB : F) {
       for (auto &I : BB) {
         if (auto callInst = dyn_cast<CallInst>(&I)) {
-          // TODO unmark these after!
-          callInst->setTailCall(true);
+          if (callInst->isNoTailCall()) {
+            fakeTailCallMarks.insert(callInst);
+            // TODO unmark these after!
+            callInst->setTailCall(true);
+          }
         }
       }
     }
@@ -1039,6 +1044,17 @@ struct CAT : public FunctionPass {
         &getAnalysis<AAResultsWrapperPass>().getAAResults(),
         &getAnalysis<OptimizationRemarkEmitterWrapperPass>().getORE(),
         DTU);
+
+    // Undo the fake tail call marks we made
+    for (auto &BB : F) {
+      for (auto &I : BB) {
+        if (auto callInst = dyn_cast<CallInst>(&I)) {
+          if (fakeTailCallMarks.find(callInst) != fakeTailCallMarks.end()) {
+            callInst->setTailCall(false);
+          }
+        }
+      }
+    }
     errs() << "  result = " << out << "\n\n";
     errs() << "\e[32m" << F << "\e[0m\n";
     return out;
