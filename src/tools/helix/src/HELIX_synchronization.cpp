@@ -45,20 +45,17 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
   auto loopHeader = loopStructure->getHeader();
 
   /*
-   * Fetch the loop function.
+   * Fetch the types we need.
    */
-  auto loopFunction = loopStructure->getFunction();
-  auto &cxt = loopFunction->getContext();
-  auto int64 = IntegerType::get(cxt, 64);
+  auto tm = this->noelle.getTypesManager();
+  auto int64 = tm->getIntegerType(64);
 
   /*
-   * HACK: Fetch the first sequential segment instructions that can be entered
-   * This is necessary because we do not re-order instructions not dependent on
-   * each other to ensure sequential segments do not overlap
+   * Fetch the constants we need.
    */
-  DominatorTree DT(*loopFunction);
-  PostDominatorTree PDT(*loopFunction);
-  DominatorSummary DS(DT, PDT);
+  auto cm = this->noelle.getConstantsManager();
+  auto const0 = cm->getIntegerConstant(0, int64);
+  auto const1 = cm->getIntegerConstant(1, int64);
 
   /*
    * Optimization: If the preamble SCC is not part of a sequential segment,
@@ -84,7 +81,6 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
    * Allocate space to track sequential segment entry state
    */
   std::vector<Value *> ssStates{};
-  IRBuilder<> entryBuilder(helixTask->getEntry()->getTerminator());
   for (auto ss : *sss) {
     this->computeAndCachePointerOfPastSequentialSegment(helixTask, ss->getID());
     this->computeAndCachePointerOfFutureSequentialSegment(helixTask,
@@ -100,15 +96,15 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
      * wait instruction of the current sequential segment has already been
      * executed in the current iteration for the current thread.
      */
-    auto ssStateAlloca = entryBuilder.CreateAlloca(int64);
-    ssStateAlloca->moveBefore(
-        helixTask->getEntry()->getFirstNonPHIOrDbgOrLifetime());
+    auto ssStateAlloca = helixTask->newStackVariable(int64);
     ssStates.push_back(ssStateAlloca);
   }
 
   /*
    * Define the code that inject wait instructions.
    */
+  auto loopFunction = loopStructure->getFunction();
+  auto &cxt = loopFunction->getContext();
   auto injectWait = [&](SequentialSegment *ss,
                         Instruction *justAfterEntry) -> void {
     /*
@@ -151,7 +147,7 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
     IRBuilder<> ssWaitBuilder(ssWaitBB);
     auto wait = this->injectWaitCall(ssWaitBuilder, ss->getID());
     auto ssState = ssStates.at(ss->getID());
-    ssWaitBuilder.CreateStore(ConstantInt::get(int64, 1), ssState);
+    ssWaitBuilder.CreateStore(const1, ssState);
     ssWaitBuilder.CreateBr(ssEntryBB);
 
     /*
@@ -162,9 +158,7 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
      */
     IRBuilder<> beforeEntryBuilder(beforeEntryBB);
     auto ssStateLoad = beforeEntryBuilder.CreateLoad(ssState);
-    auto needToWait =
-        beforeEntryBuilder.CreateICmpEQ(ssStateLoad,
-                                        ConstantInt::get(int64, 0));
+    auto needToWait = beforeEntryBuilder.CreateICmpEQ(ssStateLoad, const0);
     beforeEntryBuilder.CreateCondBr(needToWait, ssWaitBB, ssEntryBB);
 
     /*
@@ -209,8 +203,7 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
    */
   auto injectExitFlagSet = [&](Instruction *exitInstruction) -> void {
     IRBuilder<> setFlagBuilder(exitInstruction);
-    setFlagBuilder.CreateStore(ConstantInt::get(int64, 1),
-                               helixTask->loopIsOverFlagArg);
+    setFlagBuilder.CreateStore(const1, helixTask->loopIsOverFlagArg);
   };
 
   /*
@@ -275,8 +268,7 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
 
     IRBuilder<> checkFlagBuilder(beforeCheckBB);
     auto flagValue = checkFlagBuilder.CreateLoad(helixTask->loopIsOverFlagArg);
-    auto isFlagSet =
-        checkFlagBuilder.CreateICmpEQ(ConstantInt::get(int64, 1), flagValue);
+    auto isFlagSet = checkFlagBuilder.CreateICmpEQ(const1, flagValue);
     checkFlagBuilder.CreateCondBr(isFlagSet, failedCheckBB, afterCheckBB);
 
     IRBuilder<> failedCheckBuilder(failedCheckBB);
@@ -298,8 +290,7 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
      */
     auto firstLoopInst = loopHeader->getFirstNonPHIOrDbgOrLifetime();
     IRBuilder<> headerBuilder(firstLoopInst);
-    headerBuilder.CreateStore(ConstantInt::get(int64, 0),
-                              ssStates.at(ss->getID()));
+    headerBuilder.CreateStore(const0, ssStates.at(ss->getID()));
 
     /*
      * Inject waits.
@@ -337,7 +328,7 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
     ss->forEachExit([&exits](Instruction *justBeforeExit) -> void {
       auto block = justBeforeExit->getParent();
       auto terminator = block->getTerminator();
-      if (false || (terminator != justBeforeExit)
+      if ((terminator != justBeforeExit)
           || (terminator->getNumSuccessors() == 1)) {
         exits.insert(justBeforeExit);
         return;
@@ -373,8 +364,6 @@ void HELIX::addSynchronizations(LoopDependenceInfo *LDI,
       }
     }
   }
-
-  return;
 }
 
 Value *HELIX::getPointerOfSequentialSegment(HELIXTask *helixTask,
@@ -453,8 +442,6 @@ void HELIX::computeAndCachePointerOfPastSequentialSegment(HELIXTask *helixTask,
    * Cache the pointer.
    */
   this->ssPastPtrs.push_back(ptr);
-
-  return;
 }
 
 void HELIX::computeAndCachePointerOfFutureSequentialSegment(
@@ -472,8 +459,6 @@ void HELIX::computeAndCachePointerOfFutureSequentialSegment(
    * Cache the pointer.
    */
   this->ssFuturePtrs.push_back(ptr);
-
-  return;
 }
 
 } // namespace llvm::noelle

@@ -65,6 +65,8 @@ public:
 
   virtual std::string getName(void) const = 0;
 
+  virtual Transformation getParallelizationID(void) const = 0;
+
   /*
    * Destructor.
    */
@@ -191,6 +193,8 @@ protected:
       std::function<bool(GenericSCC *scc)> doesItRunSequentially) const;
 
   virtual void makePRVGsReentrant(void);
+
+  Value *fetchCloneInTask(Task *t, Value *original);
 
   /*
    * Fields

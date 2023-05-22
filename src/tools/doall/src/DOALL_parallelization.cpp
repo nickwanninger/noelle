@@ -203,12 +203,14 @@ bool DOALL::apply(LoopDependenceInfo *LDI, Heuristics *h) {
   /*
    * Add the jump to start the loop from within the task.
    */
-  this->addJumpToLoop(LDI, doallTask);
+  auto headerClone = doallTask->getCloneOfOriginalBasicBlock(loopHeader);
+  IRBuilder<> entryBuilder(doallTask->getEntry());
+  entryBuilder.CreateBr(headerClone);
 
   /*
    * Perform the iteration-chunking optimization
    */
-  this->rewireLoopToIterateChunks(LDI);
+  this->rewireLoopToIterateChunks(LDI, doallTask);
   if (this->verbose >= Verbosity::Maximal) {
     errs() << "DOALL:  Rewired induction variables and reducible variables\n";
   }
@@ -250,22 +252,6 @@ bool DOALL::apply(LoopDependenceInfo *LDI, Heuristics *h) {
   }
 
   return true;
-}
-
-void DOALL::addJumpToLoop(LoopDependenceInfo *LDI, Task *t) {
-
-  /*
-   * Fetch the header within the task.
-   */
-  auto loopStructure = LDI->getLoopStructure();
-  auto loopHeader = loopStructure->getHeader();
-  auto headerClone = t->getCloneOfOriginalBasicBlock(loopHeader);
-
-  /*
-   * Add a jump to the loop within the task.
-   */
-  IRBuilder<> entryBuilder(t->getEntry());
-  entryBuilder.CreateBr(headerClone);
 }
 
 } // namespace llvm::noelle

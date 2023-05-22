@@ -45,28 +45,16 @@ DOALL::DOALL(Noelle &noelle)
   return;
 }
 
-Value *DOALL::fetchClone(Value *original) const {
-  auto task = this->tasks[0];
-  if (isa<ConstantData>(original))
-    return original;
-
-  if (task->isAnOriginalLiveIn(original)) {
-    return task->getCloneOfOriginalLiveIn(original);
-  }
-
-  assert(isa<Instruction>(original));
-  auto iClone =
-      task->getCloneOfOriginalInstruction(cast<Instruction>(original));
-  assert(iClone != nullptr);
-  return iClone;
-}
-
 uint32_t DOALL::getMinimumNumberOfIdleCores(void) const {
   return 2;
 }
 
 std::string DOALL::getName(void) const {
   return "DOALL";
+}
+
+Transformation DOALL::getParallelizationID(void) const {
+  return Transformation::DOALL_ID;
 }
 
 } // namespace llvm::noelle
